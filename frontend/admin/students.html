@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Students — CBT Admin</title>
+<link rel="stylesheet" href="/static/shared/style.css">
+<link rel="stylesheet" href="/static/admin/layout.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><span>🏫</span> CBT Admin</div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a href="dashboard.html" class="nav-link"><span class="icon">📊</span> Dashboard</a>
+      <a href="exams.html" class="nav-link"><span class="icon">📝</span> Exams</a>
+      <a href="students.html" class="nav-link active"><span class="icon">👥</span> Students</a>
+      <div class="nav-label">Reports</div>
+      <a href="results.html" class="nav-link"><span class="icon">📈</span> Results</a>
+      <a href="monitor.html" class="nav-link"><span class="icon">👁</span> Live Monitor</a>
+    </nav>
+    <div class="sidebar-footer"><button class="btn btn-ghost" style="width:100%" onclick="logout('admin')">⎋ Sign Out</button></div>
+  </aside>
+  <main class="main">
+    <div class="topbar"><span class="topbar-title">Students</span></div>
+    <div class="page-content">
+      <div class="page-header">
+        <h1 class="page-title">Manage Students</h1>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost" onclick="openBulkModal()">📤 Bulk Import CSV</button>
+          <button class="btn btn-primary" onclick="openAddModal()">+ Add Student</button>
+        </div>
+      </div>
+      <!-- Search/Filter -->
+      <div class="flex gap-3" style="margin-bottom:16px">
+        <input class="form-control" id="search" placeholder="Search by name or ID..." style="max-width:300px" oninput="filterStudents()">
+        <input class="form-control" id="filterClass" placeholder="Filter by class..." style="max-width:200px" oninput="filterStudents()">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Student ID</th><th>Full Name</th><th>Class</th>
+            <th>Status</th><th>Created</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="studentTable"><tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted)"><span class="spinner"></span></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Add/Edit Student Modal -->
+<div class="modal-overlay" id="studentModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="studentModalTitle">Add Student</span>
+      <button class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('studentModal')">✕</button>
+    </div>
+    <form id="studentForm">
+      <div class="modal-body">
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Student ID *</label>
+            <input class="form-control" name="student_id" required placeholder="e.g. STU001" id="studentIdInput">
+          </div>
+          <div class="form-group">
+            <label>Class</label>
+            <input class="form-control" name="class_name" placeholder="e.g. JSS1A">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input class="form-control" name="full_name" required placeholder="Student full name">
+        </div>
+        <div class="form-group">
+          <label id="passwordLabel">Password *</label>
+          <input class="form-control" name="password" id="passwordInput" placeholder="Leave blank to keep current password">
+        </div>
+        <div class="form-group" id="statusGroup" style="display:none">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" name="is_active" checked style="width:16px;height:16px;accent-color:var(--primary)">
+            Account is active
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('studentModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="studentSubmitBtn">Add Student</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Bulk Import Modal -->
+<div class="modal-overlay" id="bulkModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Bulk Import Students</span>
+      <button class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('bulkModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-warning">CSV format: <code>student_id,full_name,class_name,password</code><br>If password is empty, student_id is used as default password.</div>
+      <a href="#" onclick="downloadTemplate()" class="btn btn-ghost btn-sm">📥 Download Template CSV</a>
+      <div class="form-group">
+        <label>Upload CSV File</label>
+        <input type="file" class="form-control" id="bulkFile" accept=".csv">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('bulkModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="uploadBulk()">Import Students</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/shared/app.js"></script>
+<script>
+let students = [];
+let editingId = null;
+
+async function loadStudents() {
+  try {
+    students = await api('GET', '/api/admin/students');
+    filterStudents();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function filterStudents() {
+  const s = document.getElementById('search').value.toLowerCase();
+  const c = document.getElementById('filterClass').value.toLowerCase();
+  const filtered = students.filter(st =>
+    (!s || st.full_name.toLowerCase().includes(s) || st.student_id.toLowerCase().includes(s)) &&
+    (!c || (st.class_name || '').toLowerCase().includes(c))
+  );
+  renderTable(filtered);
+}
+
+function renderTable(list) {
+  const tbody = document.getElementById('studentTable');
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><p>No students found</p></td></tr>'; return;
+  }
+  tbody.innerHTML = list.map(s => `
+    <tr>
+      <td class="mono fw-600">${s.student_id}</td>
+      <td>${s.full_name}</td>
+      <td>${s.class_name || '—'}</td>
+      <td><span class="badge ${s.is_active ? 'badge-success' : 'badge-danger'}">${s.is_active ? 'ACTIVE' : 'INACTIVE'}</span></td>
+      <td class="text-muted text-sm">${fmtDate(s.created_at)}</td>
+      <td>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost btn-sm" onclick="editStudent(${s.id})">✏ Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.id})">🗑</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function openAddModal() {
+  editingId = null;
+  document.getElementById('studentModalTitle').textContent = 'Add Student';
+  document.getElementById('studentSubmitBtn').textContent = 'Add Student';
+  document.getElementById('studentIdInput').disabled = false;
+  document.getElementById('passwordInput').placeholder = 'e.g. student123';
+  document.getElementById('passwordLabel').textContent = 'Password *';
+  document.getElementById('statusGroup').style.display = 'none';
+  document.getElementById('studentForm').reset();
+  openModal('studentModal');
+}
+
+function editStudent(id) {
+  const s = students.find(x => x.id === id);
+  if (!s) return;
+  editingId = id;
+  document.getElementById('studentModalTitle').textContent = 'Edit Student';
+  document.getElementById('studentSubmitBtn').textContent = 'Save Changes';
+  document.getElementById('studentIdInput').disabled = true;
+  document.getElementById('passwordInput').placeholder = 'Leave blank to keep current';
+  document.getElementById('passwordLabel').textContent = 'New Password';
+  document.getElementById('statusGroup').style.display = '';
+  const f = document.getElementById('studentForm');
+  f.student_id.value = s.student_id;
+  f.full_name.value = s.full_name;
+  f.class_name.value = s.class_name || '';
+  f.password.value = '';
+  f.is_active.checked = s.is_active;
+  openModal('studentModal');
+}
+
+document.getElementById('studentForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('studentSubmitBtn');
+  setLoading(btn, true);
+  try {
+    const fd = new FormData(e.target);
+    if (editingId) {
+      fd.set('is_active', e.target.is_active?.checked ? 'true' : 'false');
+      await api('PUT', `/api/admin/students/${editingId}`, fd, true);
+      toast('Student updated!');
+    } else {
+      await api('POST', '/api/admin/students', fd, true);
+      toast('Student added!');
+    }
+    closeModal('studentModal');
+    loadStudents();
+  } catch (ex) { toast(ex.message, 'error'); }
+  setLoading(btn, false);
+});
+
+async function deleteStudent(id) {
+  if (!confirm('Delete this student? All their exam records will also be deleted.')) return;
+  try {
+    await api('DELETE', `/api/admin/students/${id}`);
+    toast('Student deleted');
+    loadStudents();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function openBulkModal() { openModal('bulkModal'); }
+
+async function uploadBulk() {
+  const file = document.getElementById('bulkFile').files[0];
+  if (!file) { toast('Please select a CSV file', 'error'); return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await api('POST', '/api/admin/students/bulk', fd, true);
+    toast(`${res.imported} students imported${res.errors.length ? `, ${res.errors.length} errors` : ''}`);
+    if (res.errors.length) console.warn('Import errors:', res.errors);
+    closeModal('bulkModal');
+    loadStudents();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function downloadTemplate() {
+  const csv = 'student_id,full_name,class_name,password\nSTU001,John Doe,JSS1A,password123\nSTU002,Jane Smith,JSS1B,';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = 'students_template.csv';
+  a.click();
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+api('GET', '/api/admin/me').then(() => loadStudents()).catch(() => window.location.href = '/static/admin/login.html');
+</script>
+</body>
+</html>

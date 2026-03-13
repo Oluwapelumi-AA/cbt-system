@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Exams — CBT Admin</title>
+<link rel="stylesheet" href="/static/shared/style.css">
+<link rel="stylesheet" href="/static/admin/layout.css">
+<style>
+.exam-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; transition: border-color 0.2s; }
+.exam-card.active { border-color: var(--success); }
+.exam-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.exam-title { font-size: 16px; font-weight: 700; }
+.exam-subject { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.exam-meta { display: flex; gap: 16px; margin-top: 12px; font-size: 12px; color: var(--text-muted); }
+.exam-meta span { display: flex; align-items: center; gap: 4px; }
+.exam-actions { display: flex; gap: 6px; margin-top: 16px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><span>🏫</span> CBT Admin</div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a href="dashboard.html" class="nav-link"><span class="icon">📊</span> Dashboard</a>
+      <a href="exams.html" class="nav-link active"><span class="icon">📝</span> Exams</a>
+      <a href="students.html" class="nav-link"><span class="icon">👥</span> Students</a>
+      <div class="nav-label">Reports</div>
+      <a href="results.html" class="nav-link"><span class="icon">📈</span> Results</a>
+      <a href="monitor.html" class="nav-link"><span class="icon">👁</span> Live Monitor</a>
+    </nav>
+    <div class="sidebar-footer"><button class="btn btn-ghost" style="width:100%" onclick="logout('admin')">⎋ Sign Out</button></div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <span class="topbar-title">Exams</span>
+    </div>
+    <div class="page-content">
+      <div class="page-header">
+        <h1 class="page-title">Manage Exams</h1>
+        <button class="btn btn-primary" onclick="openCreateModal()">+ Create Exam</button>
+      </div>
+      <div id="examGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">
+        <div style="text-align:center;padding:60px;color:var(--text-muted);grid-column:1/-1"><span class="spinner"></span></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Create/Edit Exam Modal -->
+<div class="modal-overlay" id="examModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="examModalTitle">Create Exam</span>
+      <button class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('examModal')">✕</button>
+    </div>
+    <form id="examForm">
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Exam Title *</label>
+          <input class="form-control" name="title" required placeholder="e.g. Mathematics Term 1 Exam">
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Subject</label>
+            <input class="form-control" name="subject" placeholder="e.g. Mathematics">
+          </div>
+          <div class="form-group">
+            <label>Duration (minutes) *</label>
+            <input class="form-control" type="number" name="duration_minutes" value="60" min="1" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea class="form-control" name="description" placeholder="Optional exam instructions..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Pass Mark</label>
+          <input class="form-control" type="number" name="pass_marks" value="0" step="0.5">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;padding:16px;background:var(--surface2);border-radius:var(--radius)">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:500">
+            <input type="checkbox" name="randomize_questions" checked style="width:16px;height:16px;accent-color:var(--primary)">
+            Randomize question order
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:500">
+            <input type="checkbox" name="randomize_options" style="width:16px;height:16px;accent-color:var(--primary)">
+            Randomize answer options (MCQ)
+          </label>
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:500">
+            <input type="checkbox" name="show_result_immediately" checked style="width:16px;height:16px;accent-color:var(--primary)">
+            Show result immediately after submission
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('examModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="examSubmitBtn">Create Exam</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/shared/app.js"></script>
+<script>
+let exams = [];
+let editingId = null;
+
+async function loadExams() {
+  try {
+    exams = await api('GET', '/api/admin/exams');
+    renderExams();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function renderExams() {
+  const grid = document.getElementById('examGrid');
+  if (!exams.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><p>No exams yet. Create your first exam!</p></div>`;
+    return;
+  }
+  grid.innerHTML = exams.map(e => `
+    <div class="exam-card ${e.is_active ? 'active' : ''}">
+      <div class="exam-card-header">
+        <div>
+          <div class="exam-title">${e.title}</div>
+          <div class="exam-subject">${e.subject || 'No subject'}</div>
+        </div>
+        <span class="badge ${e.is_active ? 'badge-success' : 'badge-muted'}">${e.is_active ? 'ACTIVE' : 'INACTIVE'}</span>
+      </div>
+      <div class="exam-meta">
+        <span>⏱ ${e.duration_minutes} min</span>
+        <span>❓ ${e.question_count} questions</span>
+        <span>⭐ ${e.total_marks} marks</span>
+        <span>📊 ${e.submission_count} submitted</span>
+      </div>
+      <div class="exam-actions">
+        <button class="btn btn-sm btn-ghost" onclick="window.location.href='questions.html?id=${e.id}'">✏ Questions</button>
+        <button class="btn btn-sm btn-ghost" onclick="editExam(${e.id})">⚙ Edit</button>
+        <button class="btn btn-sm ${e.is_active ? 'btn-danger' : 'btn-success'}" onclick="toggleExam(${e.id})">
+          ${e.is_active ? '⏹ Deactivate' : '▶ Activate'}
+        </button>
+        <a href="results.html?exam=${e.id}" class="btn btn-sm btn-ghost">📈 Results</a>
+        <button class="btn btn-sm btn-danger" onclick="deleteExam(${e.id})">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+function openCreateModal() {
+  editingId = null;
+  document.getElementById('examModalTitle').textContent = 'Create Exam';
+  document.getElementById('examSubmitBtn').textContent = 'Create Exam';
+  document.getElementById('examForm').reset();
+  document.querySelector('[name=randomize_questions]').checked = true;
+  document.querySelector('[name=show_result_immediately]').checked = true;
+  openModal('examModal');
+}
+
+async function editExam(id) {
+  try {
+    const exam = await api('GET', `/api/admin/exams/${id}`);
+    editingId = id;
+    document.getElementById('examModalTitle').textContent = 'Edit Exam';
+    document.getElementById('examSubmitBtn').textContent = 'Save Changes';
+    const f = document.getElementById('examForm');
+    f.title.value = exam.title;
+    f.subject.value = exam.subject || '';
+    f.duration_minutes.value = exam.duration_minutes;
+    f.description.value = exam.description || '';
+    f.pass_marks.value = exam.pass_marks;
+    f.randomize_questions.checked = exam.randomize_questions;
+    f.randomize_options.checked = exam.randomize_options;
+    f.show_result_immediately.checked = exam.show_result_immediately;
+    openModal('examModal');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+document.getElementById('examForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('examSubmitBtn');
+  setLoading(btn, true);
+  try {
+    const fd = new FormData(e.target);
+    // Handle checkboxes
+    ['randomize_questions','randomize_options','show_result_immediately'].forEach(k => {
+      fd.set(k, e.target[k].checked ? 'true' : 'false');
+    });
+    if (editingId) {
+      await api('PUT', `/api/admin/exams/${editingId}`, fd, true);
+      toast('Exam updated!');
+    } else {
+      const res = await api('POST', '/api/admin/exams', fd, true);
+      toast('Exam created!');
+      closeModal('examModal');
+      window.location.href = `questions.html?id=${res.id}`;
+      return;
+    }
+    closeModal('examModal');
+    loadExams();
+  } catch (ex) { toast(ex.message, 'error'); }
+  setLoading(btn, false);
+});
+
+async function toggleExam(id) {
+  try {
+    const res = await api('PATCH', `/api/admin/exams/${id}/toggle`);
+    toast(res.message);
+    loadExams();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteExam(id) {
+  if (!confirm('Delete this exam and all its data? This cannot be undone.')) return;
+  try {
+    await api('DELETE', `/api/admin/exams/${id}`);
+    toast('Exam deleted');
+    loadExams();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// Check auth
+api('GET', '/api/admin/me').then(() => loadExams()).catch(() => window.location.href = '/static/admin/login.html');
+</script>
+</body>
+</html>

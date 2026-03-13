@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Result — CBT Portal</title>
+<link rel="stylesheet" href="/static/shared/style.css">
+<style>
+body { background: var(--bg); }
+.topbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 14px 24px; display: flex; align-items: center; justify-content: space-between;
+}
+.topbar-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; }
+.page { max-width: 820px; margin: 0 auto; padding: 32px 24px; }
+
+.result-hero {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 40px;
+  text-align: center; margin-bottom: 28px;
+}
+.result-badge-wrap { margin-bottom: 20px; }
+.result-badge {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 8px 20px; border-radius: 100px;
+  font-size: 14px; font-weight: 700; letter-spacing: 0.04em;
+}
+.result-badge.passed { background: var(--success-light); color: #4ade80; border: 1px solid rgba(22,163,74,0.3); }
+.result-badge.failed { background: var(--danger-light); color: #f87171; border: 1px solid rgba(220,38,38,0.3); }
+.score-circle {
+  width: 140px; height: 140px; border-radius: 50%;
+  border: 6px solid var(--border); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; margin: 20px auto;
+  position: relative;
+}
+.score-circle.passed { border-color: var(--success); box-shadow: 0 0 40px rgba(22,163,74,0.2); }
+.score-circle.failed { border-color: var(--danger); box-shadow: 0 0 40px rgba(220,38,38,0.2); }
+.score-pct { font-size: 36px; font-weight: 800; line-height: 1; }
+.score-pct.passed { color: #4ade80; }
+.score-pct.failed { color: #f87171; }
+.score-label { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-top: 2px; }
+.result-stats { display: flex; justify-content: center; gap: 40px; margin-top: 24px; flex-wrap: wrap; }
+.result-stat { text-align: center; }
+.result-stat-val { font-size: 22px; font-weight: 800; }
+.result-stat-lab { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+.review-section { margin-top: 28px; }
+.review-title { font-size: 17px; font-weight: 700; margin-bottom: 16px; }
+.q-review {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px; margin-bottom: 10px;
+}
+.q-review.correct { border-left: 3px solid var(--success); }
+.q-review.wrong { border-left: 3px solid var(--danger); }
+.q-review.skipped { border-left: 3px solid var(--text-muted); }
+.q-review-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.q-review-text { font-weight: 600; line-height: 1.5; margin-bottom: 10px; }
+.answer-row { display: flex; gap: 16px; font-size: 13px; flex-wrap: wrap; }
+.answer-given { color: var(--text-muted); }
+.answer-given strong { color: var(--text); }
+.answer-correct strong { color: #4ade80; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-brand"><span>📖</span> CBT Portal</div>
+  <div class="flex gap-2">
+    <a href="exams.html" class="btn btn-ghost btn-sm">← Back to Exams</a>
+    <button class="btn btn-ghost btn-sm" onclick="logout('student')">⎋ Logout</button>
+  </div>
+</div>
+
+<div class="page">
+  <div id="content">
+    <div style="text-align:center;padding:80px;color:var(--text-muted)"><span class="spinner"></span><p style="margin-top:16px">Loading result…</p></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/shared/app.js"></script>
+<script>
+const sessionId = new URLSearchParams(location.search).get('session');
+if (!sessionId) window.location.href = '/static/student/exams.html';
+
+async function loadResult() {
+  try {
+    await api('GET', '/api/student/me');
+  } catch { window.location.href = '/static/student/login.html'; return; }
+
+  try {
+    const data = await api('GET', `/api/student/sessions/${sessionId}`);
+    if (!data.is_submitted) { window.location.href = `exam.html?session=${sessionId}`; return; }
+    renderResult(data);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function renderResult(data) {
+  const passed = data.passed;
+  const pct = data.percentage || 0;
+  const correct = data.questions ? data.questions.filter(q => q.is_correct).length : null;
+
+  let reviewHtml = '';
+  if (data.show_detail && data.questions && data.questions.length) {
+    reviewHtml = `<div class="review-section">
+      <div class="review-title">Question Review</div>
+      ${data.questions.map((q, i) => {
+        const cls = !q.given_answer ? 'skipped' : q.is_correct ? 'correct' : 'wrong';
+        const icon = cls === 'correct' ? '✓' : cls === 'wrong' ? '✕' : '—';
+        const badgeCls = cls === 'correct' ? 'badge-success' : cls === 'wrong' ? 'badge-danger' : 'badge-muted';
+        let optLabel = '';
+        if (q.options && q.given_answer) {
+          optLabel = ` — ${q.options[q.given_answer] || q.given_answer}`;
+        }
+        let correctLabel = '';
+        if (q.options && q.correct_answer) {
+          correctLabel = ` — ${q.options[q.correct_answer] || q.correct_answer}`;
+        }
+        return `<div class="q-review ${cls}">
+          <div class="q-review-header">
+            <span class="text-sm text-muted fw-600">Q${i+1}</span>
+            <span class="badge ${badgeCls}">${icon} ${cls.charAt(0).toUpperCase()+cls.slice(1)}</span>
+          </div>
+          <div class="q-review-text">${q.question_text}</div>
+          <div class="answer-row">
+            <div class="answer-given">Your answer: <strong>${q.given_answer ? q.given_answer + optLabel : 'Not answered'}</strong></div>
+            ${!q.is_correct ? `<div class="answer-correct">Correct: <strong>${q.correct_answer + correctLabel}</strong></div>` : ''}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  } else if (!data.show_detail) {
+    reviewHtml = `<div class="alert alert-warning">
+      Detailed review is not available for this exam. Please contact your teacher for feedback.
+    </div>`;
+  }
+
+  document.getElementById('content').innerHTML = `
+    <div class="result-hero">
+      <div class="result-badge-wrap">
+        <span class="result-badge ${passed ? 'passed' : 'failed'}">
+          ${passed ? '🎉 Congratulations — PASSED!' : '😔 Better Luck Next Time — FAILED'}
+        </span>
+      </div>
+      <h2 style="font-size:20px;font-weight:700;margin-bottom:4px">${data.exam_title}</h2>
+      <div class="score-circle ${passed ? 'passed' : 'failed'}">
+        <div class="score-pct ${passed ? 'passed' : 'failed'}">${pct.toFixed(1)}%</div>
+        <div class="score-label">Score</div>
+      </div>
+      <div class="result-stats">
+        <div class="result-stat">
+          <div class="result-stat-val">${data.score}</div>
+          <div class="result-stat-lab">Your Score</div>
+        </div>
+        <div class="result-stat">
+          <div class="result-stat-val">${data.total_marks}</div>
+          <div class="result-stat-lab">Total Marks</div>
+        </div>
+        <div class="result-stat">
+          <div class="result-stat-val">${data.pass_marks}</div>
+          <div class="result-stat-lab">Pass Mark</div>
+        </div>
+        ${correct !== null ? `<div class="result-stat">
+          <div class="result-stat-val">${correct}/${data.questions.length}</div>
+          <div class="result-stat-lab">Correct</div>
+        </div>` : ''}
+      </div>
+    </div>
+    ${reviewHtml}
+    <div style="text-align:center;margin-top:24px">
+      <a href="exams.html" class="btn btn-primary btn-lg">← Back to Exams</a>
+    </div>`;
+}
+
+loadResult();
+</script>
+</body>
+</html>

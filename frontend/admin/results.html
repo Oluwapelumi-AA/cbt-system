@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Results — CBT Admin</title>
+<link rel="stylesheet" href="/static/shared/style.css">
+<link rel="stylesheet" href="/static/admin/layout.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><span>🏫</span> CBT Admin</div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a href="dashboard.html" class="nav-link"><span class="icon">📊</span> Dashboard</a>
+      <a href="exams.html" class="nav-link"><span class="icon">📝</span> Exams</a>
+      <a href="students.html" class="nav-link"><span class="icon">👥</span> Students</a>
+      <div class="nav-label">Reports</div>
+      <a href="results.html" class="nav-link active"><span class="icon">📈</span> Results</a>
+      <a href="monitor.html" class="nav-link"><span class="icon">👁</span> Live Monitor</a>
+    </nav>
+    <div class="sidebar-footer"><button class="btn btn-ghost" style="width:100%" onclick="logout('admin')">⎋ Sign Out</button></div>
+  </aside>
+  <main class="main">
+    <div class="topbar"><span class="topbar-title">Results</span></div>
+    <div class="page-content">
+      <div class="page-header">
+        <h1 class="page-title">Exam Results</h1>
+        <button class="btn btn-success" onclick="exportResults()">📥 Export CSV</button>
+      </div>
+      <div class="flex gap-3" style="margin-bottom:16px;flex-wrap:wrap">
+        <select class="form-control" id="examFilter" style="max-width:280px" onchange="loadResults()">
+          <option value="">All Exams</option>
+        </select>
+        <input class="form-control" id="search" placeholder="Search student..." style="max-width:250px" oninput="filterTable()">
+      </div>
+      <!-- Summary Stats -->
+      <div class="grid-4" style="margin-bottom:20px" id="statsRow">
+        <div class="stat-card"><div class="stat-label">Total Submissions</div><div class="stat-value" id="statTotal">—</div></div>
+        <div class="stat-card"><div class="stat-label">Passed</div><div class="stat-value" style="color:var(--success)" id="statPassed">—</div></div>
+        <div class="stat-card"><div class="stat-label">Failed</div><div class="stat-value" style="color:var(--danger)" id="statFailed">—</div></div>
+        <div class="stat-card"><div class="stat-label">Avg Score</div><div class="stat-value" id="statAvg">—</div></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Student ID</th><th>Name</th><th>Class</th>
+            <th>Exam</th><th>Score</th><th>%</th>
+            <th>Status</th><th>Duration</th><th>Submitted</th><th>Detail</th>
+          </tr></thead>
+          <tbody id="resultsTable"><tr><td colspan="10" style="text-align:center;padding:40px;color:var(--text-muted)"><span class="spinner"></span></td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal" style="max-width:740px">
+    <div class="modal-header">
+      <span class="modal-title" id="detailTitle">Result Detail</span>
+      <button class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('detailModal')">✕</button>
+    </div>
+    <div class="modal-body" id="detailBody"></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/shared/app.js"></script>
+<script>
+let results = [];
+let exams = [];
+
+async function init() {
+  try {
+    await api('GET', '/api/admin/me');
+    exams = await api('GET', '/api/admin/exams');
+    const sel = document.getElementById('examFilter');
+    exams.forEach(e => { const o = document.createElement('option'); o.value = e.id; o.textContent = e.title; sel.appendChild(o); });
+    // Check URL param
+    const examParam = new URLSearchParams(location.search).get('exam');
+    if (examParam) sel.value = examParam;
+    loadResults();
+  } catch { window.location.href = '/static/admin/login.html'; }
+}
+
+async function loadResults() {
+  const examId = document.getElementById('examFilter').value;
+  try {
+    results = await api('GET', `/api/admin/results${examId ? '?exam_id='+examId : ''}`);
+    updateStats();
+    filterTable();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function updateStats() {
+  document.getElementById('statTotal').textContent = results.length;
+  const passed = results.filter(r => r.passed).length;
+  document.getElementById('statPassed').textContent = passed;
+  document.getElementById('statFailed').textContent = results.length - passed;
+  const avg = results.length ? (results.reduce((s,r) => s + (r.percentage||0), 0) / results.length).toFixed(1) : '—';
+  document.getElementById('statAvg').textContent = avg + (results.length ? '%' : '');
+}
+
+function filterTable() {
+  const s = document.getElementById('search').value.toLowerCase();
+  const filtered = s ? results.filter(r => r.student_name.toLowerCase().includes(s) || r.student_id.toLowerCase().includes(s)) : results;
+  renderTable(filtered);
+}
+
+function renderTable(list) {
+  const tbody = document.getElementById('resultsTable');
+  if (!list.length) { tbody.innerHTML = '<tr><td colspan="10" class="empty-state"><p>No results found</p></td></tr>'; return; }
+  tbody.innerHTML = list.map(r => `
+    <tr>
+      <td class="mono fw-600">${r.student_id}</td>
+      <td>${r.student_name}</td>
+      <td>${r.class_name || '—'}</td>
+      <td>${r.exam_title}</td>
+      <td class="mono">${r.score}/${r.total_marks}</td>
+      <td><strong>${r.percentage}%</strong></td>
+      <td><span class="badge ${r.passed ? 'badge-success' : 'badge-danger'}">${r.passed ? 'PASSED' : 'FAILED'}</span></td>
+      <td class="text-muted text-sm">${r.duration_used ? r.duration_used + ' min' : '—'}</td>
+      <td class="text-muted text-sm">${fmtDate(r.submitted_at)}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="viewDetail(${r.id})">View</button></td>
+    </tr>`).join('');
+}
+
+async function viewDetail(sid) {
+  try {
+    const d = await api('GET', `/api/admin/results/${sid}`);
+    document.getElementById('detailTitle').textContent = `${d.student} — ${d.exam}`;
+    const correct = d.questions.filter(q => q.is_correct).length;
+    document.getElementById('detailBody').innerHTML = `
+      <div class="flex gap-3" style="flex-wrap:wrap;margin-bottom:16px">
+        <div class="badge badge-primary">Score: ${d.score}/${d.total}</div>
+        <div class="badge badge-primary">${d.percentage?.toFixed(1)}%</div>
+        <div class="badge ${d.score >= d.pass_marks ? 'badge-success' : 'badge-danger'}">${d.score >= d.pass_marks ? 'PASSED' : 'FAILED'}</div>
+        <div class="badge badge-muted">${correct}/${d.questions.length} correct</div>
+      </div>
+      ${d.questions.map((q,i) => `
+        <div style="padding:12px;background:var(--${q.is_correct?'success':'danger'}-light);border-radius:var(--radius);margin-bottom:8px;border:1px solid ${q.is_correct?'rgba(22,163,74,0.3)':'rgba(220,38,38,0.3)'}">
+          <div class="fw-600" style="margin-bottom:6px">${i+1}. ${q.question}</div>
+          <div class="text-sm">
+            <span style="color:var(--text-muted)">Answer: </span>
+            <strong>${q.given || '(no answer)'}</strong>
+            ${!q.is_correct ? `· <span style="color:var(--success)">Correct: ${q.correct}</span>` : ''}
+          </div>
+        </div>`).join('')}`;
+    openModal('detailModal');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function exportResults() {
+  const examId = document.getElementById('examFilter').value;
+  window.open(`/api/admin/results/export${examId ? '?exam_id='+examId : ''}`, '_blank');
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+init();
+</script>
+</body>
+</html>

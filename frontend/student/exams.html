@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My Exams — CBT Portal</title>
+<link rel="stylesheet" href="/static/shared/style.css">
+<style>
+body { background: var(--bg); }
+.topbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 14px 24px; display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 10;
+}
+.topbar-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; }
+.topbar-brand span { font-size: 22px; }
+.student-info { display: flex; align-items: center; gap: 12px; }
+.student-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 14px; color: #fff;
+}
+.page { max-width: 860px; margin: 0 auto; padding: 32px 24px; }
+.welcome { margin-bottom: 32px; }
+.welcome h1 { font-size: 26px; font-weight: 800; }
+.welcome p { color: var(--text-muted); margin-top: 4px; }
+.exam-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 24px; margin-bottom: 16px;
+  display: flex; justify-content: space-between; align-items: center; gap: 20px;
+  transition: border-color 0.2s, transform 0.15s;
+}
+.exam-card:hover { border-color: var(--primary); transform: translateY(-1px); }
+.exam-card.done { opacity: 0.7; }
+.exam-icon { font-size: 32px; margin-bottom: 4px; }
+.exam-title { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+.exam-subject { font-size: 13px; color: var(--text-muted); }
+.exam-meta { display: flex; gap: 20px; margin-top: 14px; font-size: 13px; color: var(--text-muted); }
+.exam-meta span { display: flex; align-items: center; gap: 5px; }
+.exam-action { flex-shrink: 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-brand"><span>📖</span> CBT Portal</div>
+  <div class="student-info">
+    <div>
+      <div class="fw-600" id="studentName">—</div>
+      <div class="text-sm text-muted mono" id="studentId">—</div>
+    </div>
+    <div class="student-avatar" id="studentAvatar">?</div>
+    <button class="btn btn-ghost btn-sm" onclick="logout('student')">⎋ Logout</button>
+  </div>
+</div>
+
+<div class="page">
+  <div class="welcome">
+    <h1>Available Exams</h1>
+    <p>Select an exam below to begin. Make sure you are ready before starting.</p>
+  </div>
+  <div id="examsList">
+    <div style="text-align:center;padding:60px;color:var(--text-muted)"><span class="spinner"></span><p style="margin-top:12px">Loading exams…</p></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/shared/app.js"></script>
+<script>
+async function init() {
+  try {
+    const me = await api('GET', '/api/student/me');
+    document.getElementById('studentName').textContent = me.full_name;
+    document.getElementById('studentId').textContent = me.student_id;
+    document.getElementById('studentAvatar').textContent = me.full_name.charAt(0).toUpperCase();
+  } catch { window.location.href = '/static/student/login.html'; return; }
+
+  try {
+    const exams = await api('GET', '/api/student/exams/available');
+    renderExams(exams);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function renderExams(exams) {
+  const list = document.getElementById('examsList');
+  if (!exams.length) {
+    list.innerHTML = `<div class="empty-state">
+      <p style="font-size:48px;margin-bottom:12px">📭</p>
+      <p>No active exams at the moment</p>
+      <p class="text-sm text-muted" style="margin-top:4px">Please wait for your teacher to activate an exam</p>
+    </div>`;
+    return;
+  }
+  list.innerHTML = exams.map(e => {
+    const isDone = e.status === 'submitted';
+    const isInProgress = e.status === 'in_progress';
+    let actionBtn = '';
+    if (isDone) {
+      actionBtn = `<div>
+        <span class="badge badge-success" style="font-size:13px;padding:6px 12px">✓ Submitted</span>
+        ${e.session_id ? `<br><a href="result.html?session=${e.session_id}" class="btn btn-ghost btn-sm" style="margin-top:8px">View Result</a>` : ''}
+      </div>`;
+    } else if (isInProgress) {
+      actionBtn = `<div style="text-align:center">
+        <a href="exam.html?session=${e.session_id}" class="btn btn-warning" style="background:var(--warning);color:#fff;border-color:var(--warning)">▶ Continue</a>
+        <div class="text-sm text-muted" style="margin-top:6px">In progress</div>
+      </div>`;
+    } else {
+      actionBtn = `<div style="text-align:center">
+        <button class="btn btn-primary" onclick="startExam(${e.id})">Start Exam</button>
+        <div class="text-sm text-muted" style="margin-top:6px">${e.duration_minutes} min</div>
+      </div>`;
+    }
+    return `<div class="exam-card ${isDone ? 'done' : ''}">
+      <div>
+        <div class="exam-title">${e.title}</div>
+        <div class="exam-subject">${e.subject || 'General'}</div>
+        <div class="exam-meta">
+          <span>⏱ ${e.duration_minutes} min</span>
+          <span>❓ ${e.question_count} questions</span>
+          <span>⭐ ${e.total_marks} marks</span>
+          ${e.pass_marks > 0 ? `<span>🎯 Pass: ${e.pass_marks}</span>` : ''}
+        </div>
+        ${e.description ? `<div class="text-sm text-muted" style="margin-top:8px">${e.description}</div>` : ''}
+      </div>
+      <div class="exam-action">${actionBtn}</div>
+    </div>`;
+  }).join('');
+}
+
+async function startExam(examId) {
+  if (!confirm('Are you ready to start this exam? The timer will begin immediately.')) return;
+  try {
+    const res = await api('POST', `/api/student/exams/${examId}/start`);
+    window.location.href = `exam.html?session=${res.session_id}`;
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+init();
+</script>
+</body>
+</html>

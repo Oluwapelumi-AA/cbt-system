@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Questions — CBT Admin</title>
+<link rel="stylesheet" href="/static/shared/style.css">
+<link rel="stylesheet" href="/static/admin/layout.css">
+<style>
+.q-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
+.q-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.q-num { font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; }
+.q-text { font-weight: 600; line-height: 1.5; }
+.q-options { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+.q-opt { padding: 6px 10px; border-radius: 6px; font-size: 13px; background: var(--surface2); }
+.q-opt.correct { background: var(--success-light); color: #4ade80; font-weight: 600; }
+.q-marks { font-size: 12px; margin-top: 8px; color: var(--text-muted); }
+.upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 32px; text-align: center; cursor: pointer; transition: border-color 0.2s; }
+.upload-zone:hover { border-color: var(--primary); }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><span>🏫</span> CBT Admin</div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a href="dashboard.html" class="nav-link"><span class="icon">📊</span> Dashboard</a>
+      <a href="exams.html" class="nav-link"><span class="icon">📝</span> Exams</a>
+      <a href="students.html" class="nav-link"><span class="icon">👥</span> Students</a>
+      <div class="nav-label">Reports</div>
+      <a href="results.html" class="nav-link"><span class="icon">📈</span> Results</a>
+      <a href="monitor.html" class="nav-link"><span class="icon">👁</span> Live Monitor</a>
+    </nav>
+    <div class="sidebar-footer"><button class="btn btn-ghost" style="width:100%" onclick="logout('admin')">⎋ Sign Out</button></div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div class="flex gap-3" style="align-items:center">
+        <a href="exams.html" class="btn btn-ghost btn-sm">← Back</a>
+        <span class="topbar-title" id="examTitle">Questions</span>
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-ghost btn-sm" onclick="openBulkModal()">📤 Bulk Import CSV</button>
+        <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Add Question</button>
+      </div>
+    </div>
+    <div class="page-content">
+      <div class="flex-between" style="margin-bottom:20px">
+        <div id="examInfo" class="text-muted text-sm"></div>
+        <span class="badge badge-primary" id="qCount">0 questions</span>
+      </div>
+      <div id="questionsList"></div>
+    </div>
+  </main>
+</div>
+
+<!-- Add/Edit Question Modal -->
+<div class="modal-overlay" id="qModal">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <span class="modal-title" id="qModalTitle">Add Question</span>
+      <button class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('qModal')">✕</button>
+    </div>
+    <form id="qForm">
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Question Type</label>
+          <select class="form-control" name="question_type" id="qTypeSelect" onchange="updateForm()">
+            <option value="mcq">Multiple Choice (MCQ)</option>
+            <option value="true_false">True / False</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Question Text *</label>
+          <textarea class="form-control" name="question_text" required placeholder="Enter question here..." style="min-height:100px"></textarea>
+        </div>
+        <div id="mcqOptions">
+          <div class="grid-2">
+            <div class="form-group">
+              <label>Option A</label>
+              <input class="form-control" name="option_a" placeholder="Option A">
+            </div>
+            <div class="form-group">
+              <label>Option B</label>
+              <input class="form-control" name="option_b" placeholder="Option B">
+            </div>
+            <div class="form-group">
+              <label>Option C</label>
+              <input class="form-control" name="option_c" placeholder="Option C">
+            </div>
+            <div class="form-group">
+              <label>Option D</label>
+              <input class="form-control" name="option_d" placeholder="Option D">
+            </div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Correct Answer *</label>
+            <select class="form-control" name="correct_answer" id="correctAnswerSelect" required>
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Marks</label>
+            <input class="form-control" type="number" name="marks" value="1" min="0.5" step="0.5">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" onclick="closeModal('qModal')">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="qSubmitBtn">Add Question</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Bulk Import Modal -->
+<div class="modal-overlay" id="bulkModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Bulk Import Questions</span>
+      <button class="btn btn-ghost btn-sm btn-icon" onclick="closeModal('bulkModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="alert alert-warning">
+        CSV format: <code>question,type,A,B,C,D,answer,marks</code><br>
+        type: mcq or true_false | answer: A/B/C/D
+      </div>
+      <a href="#" onclick="downloadTemplate()" class="btn btn-ghost btn-sm">📥 Download Template CSV</a>
+      <div class="form-group">
+        <label>Upload CSV File</label>
+        <input type="file" class="form-control" id="bulkFile" accept=".csv">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('bulkModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="uploadBulk()">Import Questions</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/static/shared/app.js"></script>
+<script>
+const examId = new URLSearchParams(location.search).get('id');
+let editingQId = null;
+
+if (!examId) window.location.href = 'exams.html';
+
+async function loadExam() {
+  try {
+    const exam = await api('GET', `/api/admin/exams/${examId}`);
+    document.getElementById('examTitle').textContent = exam.title;
+    document.getElementById('examInfo').textContent = `${exam.subject || 'No subject'} · ${exam.duration_minutes} min · ${exam.total_marks} total marks`;
+    renderQuestions(exam.questions);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function renderQuestions(questions) {
+  document.getElementById('qCount').textContent = `${questions.length} question${questions.length !== 1 ? 's' : ''}`;
+  const list = document.getElementById('questionsList');
+  if (!questions.length) {
+    list.innerHTML = `<div class="empty-state"><p>No questions yet. Add your first question!</p></div>`;
+    return;
+  }
+  list.innerHTML = questions.map((q, i) => {
+    let optHtml = '';
+    if (q.options) {
+      optHtml = `<div class="q-options">${Object.entries(q.options).map(([k,v]) =>
+        `<div class="q-opt ${k === q.correct_answer ? 'correct' : ''}">
+          <strong>${k}.</strong> ${v} ${k === q.correct_answer ? '✓' : ''}
+        </div>`).join('')}</div>`;
+    } else {
+      optHtml = `<div class="q-marks" style="margin-top:8px">Correct: <strong>${q.correct_answer}</strong></div>`;
+    }
+    return `<div class="q-item">
+      <div class="q-header">
+        <div style="flex:1">
+          <div class="q-num">Q${i+1} · <span class="badge badge-muted">${q.question_type.toUpperCase()}</span></div>
+          <div class="q-text">${q.question_text}</div>
+          ${optHtml}
+          <div class="q-marks">Marks: <strong>${q.marks}</strong></div>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost btn-sm btn-icon" onclick="editQ(${JSON.stringify(q).replace(/"/g,'&quot;')})">✏</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteQ(${q.id})">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateForm() {
+  const type = document.getElementById('qTypeSelect').value;
+  const mcqOpts = document.getElementById('mcqOptions');
+  const answerSel = document.getElementById('correctAnswerSelect');
+  if (type === 'true_false') {
+    mcqOpts.style.display = 'none';
+    answerSel.innerHTML = '<option value="A">True</option><option value="B">False</option>';
+  } else {
+    mcqOpts.style.display = '';
+    answerSel.innerHTML = '<option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>';
+  }
+}
+
+function openAddModal() {
+  editingQId = null;
+  document.getElementById('qModalTitle').textContent = 'Add Question';
+  document.getElementById('qSubmitBtn').textContent = 'Add Question';
+  document.getElementById('qForm').reset();
+  updateForm();
+  openModal('qModal');
+}
+
+function editQ(q) {
+  editingQId = q.id;
+  document.getElementById('qModalTitle').textContent = 'Edit Question';
+  document.getElementById('qSubmitBtn').textContent = 'Save Changes';
+  const f = document.getElementById('qForm');
+  f.question_type.value = q.question_type;
+  updateForm();
+  f.question_text.value = q.question_text;
+  if (q.options && q.question_type === 'mcq') {
+    f.option_a.value = q.options.A || '';
+    f.option_b.value = q.options.B || '';
+    f.option_c.value = q.options.C || '';
+    f.option_d.value = q.options.D || '';
+  }
+  f.correct_answer.value = q.correct_answer;
+  f.marks.value = q.marks;
+  openModal('qModal');
+}
+
+document.getElementById('qForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('qSubmitBtn');
+  setLoading(btn, true);
+  try {
+    const fd = new FormData(e.target);
+    if (editingQId) {
+      await api('PUT', `/api/admin/exams/${examId}/questions/${editingQId}`, fd, true);
+      toast('Question updated!');
+    } else {
+      await api('POST', `/api/admin/exams/${examId}/questions`, fd, true);
+      toast('Question added!');
+    }
+    closeModal('qModal');
+    loadExam();
+  } catch (ex) { toast(ex.message, 'error'); }
+  setLoading(btn, false);
+});
+
+async function deleteQ(qid) {
+  if (!confirm('Delete this question?')) return;
+  try {
+    await api('DELETE', `/api/admin/exams/${examId}/questions/${qid}`);
+    toast('Question deleted');
+    loadExam();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function openBulkModal() { openModal('bulkModal'); }
+
+async function uploadBulk() {
+  const file = document.getElementById('bulkFile').files[0];
+  if (!file) { toast('Please select a CSV file', 'error'); return; }
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res = await api('POST', `/api/admin/exams/${examId}/questions/bulk`, fd, true);
+    toast(res.message);
+    closeModal('bulkModal');
+    loadExam();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function downloadTemplate() {
+  const csv = 'question,type,A,B,C,D,answer,marks\n"What is 2+2?",mcq,"1","2","4","8",C,1\n"The Earth is round.",true_false,,,,,A,1';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = 'questions_template.csv';
+  a.click();
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+api('GET', '/api/admin/me').then(() => loadExam()).catch(() => window.location.href = '/static/admin/login.html');
+</script>
+</body>
+</html>

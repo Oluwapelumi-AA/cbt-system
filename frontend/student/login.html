@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Student Login — CBT System</title>
+<link rel="stylesheet" href="/static/shared/style.css">
+<style>
+body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg); }
+.login-wrap { width: 100%; max-width: 440px; padding: 24px; }
+.logo { text-align: center; margin-bottom: 32px; }
+.logo-icon { width: 64px; height: 64px; background: linear-gradient(135deg, var(--primary), var(--accent));
+  border-radius: 18px; display: flex; align-items: center; justify-content: center;
+  font-size: 28px; margin: 0 auto 14px; box-shadow: 0 8px 24px rgba(37,99,235,0.3); }
+.logo h1 { font-size: 24px; font-weight: 800; }
+.logo p { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
+.card { padding: 32px; }
+.card h2 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+.card p { color: var(--text-muted); font-size: 13px; margin-bottom: 24px; }
+form { display: flex; flex-direction: column; gap: 16px; }
+.admin-link { text-align: center; margin-top: 16px; font-size: 12px; color: var(--text-muted); }
+.instructions { background: var(--surface2); border-radius: var(--radius); padding: 14px; font-size: 12px; color: var(--text-muted); line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <div class="logo">
+    <div class="logo-icon">📖</div>
+    <h1>CBT Portal</h1>
+    <p>Computer-Based Testing System</p>
+  </div>
+  <div class="card">
+    <h2>Student Login</h2>
+    <p>Enter your student credentials to access your exam</p>
+    <div id="error" class="alert alert-danger" style="display:none"></div>
+    <form id="loginForm">
+      <div class="form-group">
+        <label>Student ID</label>
+        <input class="form-control" name="student_id" placeholder="e.g. STU001" required autocomplete="username" style="font-size:16px">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input class="form-control" type="password" name="password" placeholder="Enter your password" required autocomplete="current-password" style="font-size:16px">
+      </div>
+      <button type="submit" class="btn btn-primary btn-lg" style="width:100%">Login & Start</button>
+    </form>
+    <div class="instructions" style="margin-top:20px">
+      <strong>Instructions:</strong><br>
+      • Use the Student ID and password given by your teacher<br>
+      • Do not close the browser during the exam<br>
+      • Your answers are saved automatically<br>
+      • Submit before time runs out
+    </div>
+  </div>
+  <div class="admin-link">
+    Admin? <a href="/static/admin/login.html">Go to Admin Panel →</a>
+  </div>
+</div>
+<div id="toast-container"></div>
+<script src="/static/shared/app.js"></script>
+<script>
+// If already logged in, go to exams page
+api('GET', '/api/student/me').then(() => window.location.href = '/static/student/exams.html').catch(() => {});
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  const err = document.getElementById('error');
+  err.style.display = 'none';
+  setLoading(btn, true);
+  try {
+    const fd = new FormData(e.target);
+    await api('POST', '/api/student/login', fd, true);
+    window.location.href = '/static/student/exams.html';
+  } catch (ex) {
+    err.textContent = ex.message;
+    err.style.display = 'flex';
+    setLoading(btn, false);
+  }
+});
+</script>
+</body>
+</html>

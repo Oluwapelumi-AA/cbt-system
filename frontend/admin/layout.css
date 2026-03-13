@@ -1,0 +1,38 @@
+/* Admin Layout */
+.layout { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 240px; background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; position: fixed; top: 0; left: 0;
+  height: 100vh; overflow-y: auto; z-index: 10;
+}
+.sidebar-logo {
+  padding: 20px; display: flex; align-items: center; gap: 10px;
+  border-bottom: 1px solid var(--border); font-weight: 800; font-size: 15px;
+}
+.sidebar-logo span { font-size: 22px; }
+.sidebar-nav { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
+.nav-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-muted);
+  padding: 8px 8px 4px;
+}
+.nav-link {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border-radius: var(--radius);
+  color: var(--text-muted); font-weight: 500; font-size: 14px;
+  text-decoration: none; transition: all 0.15s;
+}
+.nav-link:hover { background: var(--surface2); color: var(--text); text-decoration: none; }
+.nav-link.active { background: var(--primary-light); color: #60a5fa; }
+.nav-link .icon { font-size: 16px; width: 20px; text-align: center; }
+.sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
+.main { margin-left: 240px; flex: 1; }
+.topbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 16px 28px; display: flex; align-items: center;
+  justify-content: space-between; position: sticky; top: 0; z-index: 5;
+}
+.topbar-title { font-size: 18px; font-weight: 700; }
+.page-content { padding: 28px; }
+.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.page-title { font-size: 22px; font-weight: 800; }

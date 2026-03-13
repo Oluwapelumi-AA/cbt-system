@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live Monitor — CBT Admin</title>
+<link rel="stylesheet" href="/static/shared/style.css">
+<link rel="stylesheet" href="/static/admin/layout.css">
+<style>
+.monitor-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  display: flex; align-items: center; gap: 16px;
+}
+.monitor-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success); animation: pulse 1.5s ease infinite; flex-shrink: 0; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.progress-bar { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; flex: 1; }
+.progress-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.5s; }
+.timer-low { color: var(--danger); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><span>🏫</span> CBT Admin</div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a href="dashboard.html" class="nav-link"><span class="icon">📊</span> Dashboard</a>
+      <a href="exams.html" class="nav-link"><span class="icon">📝</span> Exams</a>
+      <a href="students.html" class="nav-link"><span class="icon">👥</span> Students</a>
+      <div class="nav-label">Reports</div>
+      <a href="results.html" class="nav-link"><span class="icon">📈</span> Results</a>
+      <a href="monitor.html" class="nav-link active"><span class="icon">👁</span> Live Monitor</a>
+    </nav>
+    <div class="sidebar-footer"><button class="btn btn-ghost" style="width:100%" onclick="logout('admin')">⎋ Sign Out</button></div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <span class="topbar-title">Live Monitor</span>
+      <div class="flex gap-3" style="align-items:center">
+        <span id="lastUpdate" class="text-muted text-sm"></span>
+        <span class="badge badge-success" id="activeCount">0 active</span>
+      </div>
+    </div>
+    <div class="page-content">
+      <div class="flex-between" style="margin-bottom:20px">
+        <p class="text-muted">Auto-refreshes every 10 seconds. Shows students currently taking an exam.</p>
+        <button class="btn btn-ghost btn-sm" onclick="loadMonitor()">🔄 Refresh Now</button>
+      </div>
+      <div id="monitorGrid" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>
+  </main>
+</div>
+<div id="toast-container"></div>
+<script src="/static/shared/app.js"></script>
+<script>
+let interval;
+
+async function loadMonitor() {
+  try {
+    const sessions = await api('GET', '/api/admin/monitor');
+    document.getElementById('activeCount').textContent = `${sessions.length} active`;
+    document.getElementById('lastUpdate').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+    const grid = document.getElementById('monitorGrid');
+    if (!sessions.length) {
+      grid.innerHTML = '<div class="empty-state"><p>No active exam sessions right now</p><span class="text-muted text-sm">Students will appear here when they start an exam</span></div>';
+      return;
+    }
+    grid.innerHTML = sessions.map(s => {
+      const pct = s.total_questions ? Math.round(s.answers_count / s.total_questions * 100) : 0;
+      const tLow = s.time_remaining && s.time_remaining < 300;
+      const elapsed = Math.floor((Date.now() - new Date(s.started_at).getTime()) / 1000);
+      return `<div class="monitor-card">
+        <div class="monitor-dot"></div>
+        <div style="min-width:200px">
+          <div class="fw-600">${s.student_name}</div>
+          <div class="text-sm text-muted mono">${s.student_id}</div>
+        </div>
+        <div style="flex:1">
+          <div class="text-sm text-muted" style="margin-bottom:6px">${s.exam_title}</div>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width:${pct}%"></div>
+          </div>
+          <div class="text-sm text-muted" style="margin-top:4px">${s.answers_count}/${s.total_questions} answered (${pct}%)</div>
+        </div>
+        <div style="text-align:right;min-width:100px">
+          <div class="${tLow ? 'timer-low' : 'fw-600'}">${s.time_remaining ? fmtTime(s.time_remaining) : '—'}</div>
+          <div class="text-sm text-muted">remaining</div>
+        </div>
+        <div style="text-align:right;min-width:80px;color:var(--text-muted);font-size:12px">
+          Started<br>${fmtTime(elapsed)} ago
+        </div>
+      </div>`;
+    }).join('');
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+api('GET', '/api/admin/me').then(() => {
+  loadMonitor();
+  interval = setInterval(loadMonitor, 10000);
+}).catch(() => window.location.href = '/static/admin/login.html');
+</script>
+</body>
+</html>

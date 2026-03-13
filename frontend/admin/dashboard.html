@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard — CBT Admin</title>
+<link rel="stylesheet" href="/static/shared/style.css">
+<link rel="stylesheet" href="/static/admin/layout.css">
+</head>
+<body>
+<div class="layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo"><span>🏫</span> CBT Admin</div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a href="dashboard.html" class="nav-link active"><span class="icon">📊</span> Dashboard</a>
+      <a href="exams.html" class="nav-link"><span class="icon">📝</span> Exams</a>
+      <a href="students.html" class="nav-link"><span class="icon">👥</span> Students</a>
+      <div class="nav-label">Reports</div>
+      <a href="results.html" class="nav-link"><span class="icon">📈</span> Results</a>
+      <a href="monitor.html" class="nav-link"><span class="icon">👁</span> Live Monitor</a>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="btn btn-ghost" style="width:100%" onclick="logout('admin')">⎋ Sign Out</button>
+    </div>
+  </aside>
+  <!-- MAIN -->
+  <main class="main">
+    <div class="topbar">
+      <span class="topbar-title">Dashboard</span>
+      <span id="adminName" class="text-muted text-sm"></span>
+    </div>
+    <div class="page-content">
+      <!-- Stats -->
+      <div class="grid-4" style="margin-bottom:24px">
+        <div class="stat-card">
+          <div class="stat-label">Total Students</div>
+          <div class="stat-value" id="totalStudents">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total Exams</div>
+          <div class="stat-value" id="totalExams">—</div>
+        </div>
+        <div class="stat-card" style="border-color: rgba(37,99,235,0.4)">
+          <div class="stat-label">Active Exams</div>
+          <div class="stat-value" id="activeExams" style="color:var(--primary)">—</div>
+        </div>
+        <div class="stat-card" style="border-color: rgba(22,163,74,0.4)">
+          <div class="stat-label">Students Testing Now</div>
+          <div class="stat-value" id="activeSessions" style="color:var(--success)">—</div>
+        </div>
+      </div>
+      <!-- Quick Actions -->
+      <div class="flex gap-2" style="margin-bottom:24px; flex-wrap:wrap">
+        <a href="exams.html" class="btn btn-primary">+ New Exam</a>
+        <a href="students.html" class="btn btn-ghost">+ Add Students</a>
+        <a href="monitor.html" class="btn btn-ghost">👁 Live Monitor</a>
+        <a href="results.html" class="btn btn-ghost">📥 Export Results</a>
+      </div>
+      <!-- Recent Results -->
+      <div class="card">
+        <div class="flex-between" style="margin-bottom:16px">
+          <h3 style="font-size:15px;font-weight:700">Recent Submissions</h3>
+          <a href="results.html" class="text-sm" style="color:var(--primary)">View all →</a>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>Student</th><th>Class</th><th>Exam</th>
+              <th>Score</th><th>%</th><th>Status</th><th>Time</th>
+            </tr></thead>
+            <tbody id="recentTable"><tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted)">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="toast-container"></div>
+<script src="/static/shared/app.js"></script>
+<script>
+(async () => {
+  try {
+    const me = await api('GET', '/api/admin/me');
+    document.getElementById('adminName').textContent = me.full_name || me.username;
+  } catch { window.location.href = '/static/admin/login.html'; return; }
+  try {
+    const d = await api('GET', '/api/admin/dashboard');
+    document.getElementById('totalStudents').textContent = d.total_students;
+    document.getElementById('totalExams').textContent = d.total_exams;
+    document.getElementById('activeExams').textContent = d.active_exams;
+    document.getElementById('activeSessions').textContent = d.active_sessions;
+    const tbody = document.getElementById('recentTable');
+    if (!d.recent_sessions.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state"><p>No submissions yet</p></td></tr>';
+    } else {
+      tbody.innerHTML = d.recent_sessions.map(s => `
+        <tr>
+          <td><span class="fw-600">${s.student_name}</span><br><span class="text-sm text-muted mono">${s.student_id}</span></td>
+          <td>${s.student_id}</td>
+          <td>${s.exam_title}</td>
+          <td class="mono">${s.score}/${s.total}</td>
+          <td><strong>${s.percentage}%</strong></td>
+          <td><span class="badge ${s.percentage >= 50 ? 'badge-success' : 'badge-danger'}">${s.percentage >= 50 ? 'PASSED' : 'FAILED'}</span></td>
+          <td class="text-muted text-sm">${fmtDate(s.submitted_at)}</td>
+        </tr>`).join('');
+    }
+  } catch (e) { toast(e.message, 'error'); }
+})();
+</script>
+</body>
+</html>
